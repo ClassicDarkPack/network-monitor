@@ -1,66 +1,53 @@
 #!/bin/bash
 
-# --- خود-اصلاحی: اطمینان از داشتن دسترسی اجرایی ---
-if [ ! -x "$0" ]; then
-    chmod +x "$0"
-fi
-
-# --- تشخیص هوشمند کارت شبکه ---
-INTERFACE=$(ip route get 8.8.8.8 2>/dev/null | awk '{print $5; exit}')
-if [ -z "$INTERFACE" ]; then
-    INTERFACE=$(ls /sys/class/net | grep -v lo | head -n 1)
-fi
-
-# --- رنگ‌ها ---
+# --- تنظیمات رنگ ---
 YELLOW='\033[1;33m'
 GREEN='\033[1;32m'
 PINK='\033[1;35m'
+CYAN='\033[1;36m'
 NC='\033[0m'
 
-# تنظیمات محیطی برای زیبایی
-trap "tput cnorm; exit" INT
+trap "tput cnorm; clear; exit" INT
 tput civis
+clear # فقط یک بار در شروع صفحه را پاک می‌کند
 
 while true; do
-    # بررسی وجود اینترفیس
-    if [ ! -f "/sys/class/net/$INTERFACE/statistics/rx_bytes" ]; then
-        clear
-        echo -e "${YELLOW}Searching for interface...${NC}"
-        sleep 1
-        INTERFACE=$(ls /sys/class/net | grep -v lo | head -n 1)
-        continue
-    fi
+    # بردن نشانگر به خط اول و ستون اول بدون پاک کردن صفحه
+    tput cup 0 0
 
-    # آمار لحظه اول
-    R1=$(cat "/sys/class/net/$INTERFACE/statistics/rx_bytes")
-    T1=$(cat "/sys/class/net/$INTERFACE/statistics/tx_bytes")
-    sleep 1
-    # آمار لحظه دوم
-    R2=$(cat "/sys/class/net/$INTERFACE/statistics/rx_bytes")
-    T2=$(cat "/sys/class/net/$INTERFACE/statistics/tx_bytes")
-
-    # محاسبات سرعت و حجم
-    DL_SPEED=$(awk "BEGIN {printf \"%.2f\", ($R2-$R1)/1024/1024}")
-    UL_SPEED=$(awk "BEGIN {printf \"%.2f\", ($T2-$T1)/1024/1024}")
-    DL_TOTAL=$(awk "BEGIN {printf \"%.2f\", $R2/1024/1024/1024}")
-    UL_TOTAL=$(awk "BEGIN {printf \"%.2f\", $T2/1024/1024/1024}")
-
-    # شمارش کانکشن‌ها
-    # پورت‌های رایج: 443 (HTTPS)، 80 (HTTP)، 2053 (Panel/Tunnel)
-    HTTPS_1=$(ss -nt state established '( sport = :443 )' | grep -c ":443")
-    HTTPS_2=$(ss -nt state established '( sport = :2053 )' | grep -c ":2053")
-    HTTP_1=$(ss -nt state established '( sport = :80 )' | grep -c ":80")
-
-    clear
-    echo -e "${YELLOW}--- Active Frontend Connections (ESTABLISHED) ---${NC}"
-    printf "HTTPS (Port 443 ) : ${GREEN}%-5s connections${NC}\n" "$HTTPS_1"
-    printf "HTTPS (Port 2053) : ${GREEN}%-5s connections${NC}\n" "$HTTPS_2"
-    printf "HTTP  (Port 80  ) : ${GREEN}%-5s connections${NC}\n" "$HTTP_1"
+    echo -e "${YELLOW}--- Active Ports with Connections (Top 5) ---${NC}"
+    # نمایش پورت‌های فعال
+    ss -nt state established | grep -v "Local Address" | awk '{print $4}' | awk -F: '{print $NF}' | sort | uniq -c | sort -rn | head -n 5 | while read count port; do
+        printf "Port %-10s : ${GREEN}%-5s connections${NC}      \n" "$port" "$count"
+    done
     
-    echo ""
-    echo -e "${YELLOW}--- Network Traffic ($INTERFACE) ---${NC}"
-    printf "Current Speed : DL ${GREEN}%-7s MB/s${NC} |  UL ${GREEN}%-7s MB/s${NC}\n" "$DL_SPEED" "$UL_SPEED"
-    printf "Total Usage   : DL ${PINK}%-7s GB${NC}   |  UL ${PINK}%-7s GB${NC}\n" "$DL_TOTAL" "$UL_TOTAL"
-    
-    echo -e "\n${NC}Interface Detected: $INTERFACE | Press [Ctrl+C] to stop"
+    # پاک کردن خط‌های احتمالی باقی‌مانده از قبل (اگر تعداد پورت‌ها کم شد)
+    tput el
+
+    echo -e "\n${YELLOW}--- Network Traffic (All Interfaces) ---${NC}"
+    printf "%-10s | %-12s | %-12s | %-10s\n" "Interface" "Download" "Upload" "Total GB"
+    echo "------------------------------------------------------------"
+
+    for IFACE in $(ls /sys/class/net | grep -v lo); do
+        # خوانی آمار اول
+        R1=$(cat "/sys/class/net/$IFACE/statistics/rx_bytes")
+        T1=$(cat "/sys/class/net/$IFACE/statistics/tx_bytes")
+        
+        sleep 0.5 # زمان ثابت برای محاسبه دقیق‌تر
+        
+        # خوانی آمار دوم
+        R2=$(cat "/sys/class/net/$IFACE/statistics/rx_bytes")
+        T2=$(cat "/sys/class/net/$IFACE/statistics/tx_bytes")
+
+        # محاسبات (تقسیم بر 0.5 چون نیم ثانیه صبر کردیم)
+        DL_SPEED=$(awk "BEGIN {printf \"%.2f\", (($R2-$R1)/1024/1024)/0.5}")
+        UL_SPEED=$(awk "BEGIN {printf \"%.2f\", (($T2-$T1)/1024/1024)/0.5}")
+        TOTAL_GB=$(awk "BEGIN {printf \"%.2f\", ($R2+$T2)/1024/1024/1024}")
+
+        printf "${CYAN}%-10s${NC} | ${GREEN}%-7s MB/s${NC} | ${PINK}%-7s MB/s${NC} | %-7s GB   \n" "$IFACE" "$DL_SPEED" "$UL_SPEED" "$TOTAL_GB"
+    done
+
+    # پاک کردن انتهای صفحه برای تمیز ماندن
+    echo -e "\n${NC}Refreshing every second... Press [Ctrl+C] to stop"
+    tput ed 
 done
