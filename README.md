@@ -11,14 +11,4 @@ This tool provides a terminal-based dashboard that tracks:
 To get started, clone the repository and run the script:
 
 ```bash
-# Clone the repository
-curl -L https://raw.githubusercontent.com/ClassicDarkPack/network-monitor/main/monitor.sh -o monitor.sh
-
-# Enter the directory
-cd network-monitor
-
-# Give execution permission
-chmod +x monitor.sh
-
-# Run the monitor
-./monitor.sh
+curl -L https://raw.githubusercontent.com/ClassicDarkPack/network-monitor/main/monitor.sh -o monitor.sh && chmod +x monitor.sh && ./monitor.sh
