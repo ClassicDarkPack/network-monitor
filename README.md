@@ -12,7 +12,7 @@ To get started, clone the repository and run the script:
 
 ```bash
 # Clone the repository
-git clone [https://github.com/ClassicDarkPack/network-monitor.git](https://github.com/ClassicDarkPack/network-monitor.git)
+curl -L https://raw.githubusercontent.com/ClassicDarkPack/network-monitor/main/monitor.sh -o monitor.sh
 
 # Enter the directory
 cd network-monitor
