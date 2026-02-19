@@ -1,7 +1,15 @@
 #!/bin/bash
 
-# --- تشخیص خودکار رابط شبکه ---
-INTERFACE=$(ip route get 8.8.8.8 | awk '{print $5; exit}')
+# --- خود-اصلاحی: اطمینان از داشتن دسترسی اجرایی ---
+if [ ! -x "$0" ]; then
+    chmod +x "$0"
+fi
+
+# --- تشخیص هوشمند کارت شبکه ---
+INTERFACE=$(ip route get 8.8.8.8 2>/dev/null | awk '{print $5; exit}')
+if [ -z "$INTERFACE" ]; then
+    INTERFACE=$(ls /sys/class/net | grep -v lo | head -n 1)
+fi
 
 # --- رنگ‌ها ---
 YELLOW='\033[1;33m'
@@ -9,19 +17,27 @@ GREEN='\033[1;32m'
 PINK='\033[1;35m'
 NC='\033[0m'
 
+# تنظیمات محیطی برای زیبایی
 trap "tput cnorm; exit" INT
 tput civis
 
 while true; do
+    # بررسی وجود اینترفیس
+    if [ ! -f "/sys/class/net/$INTERFACE/statistics/rx_bytes" ]; then
+        clear
+        echo -e "${YELLOW}Searching for interface...${NC}"
+        sleep 1
+        INTERFACE=$(ls /sys/class/net | grep -v lo | head -n 1)
+        continue
+    fi
+
     # آمار لحظه اول
-    R1=$(cat /sys/class/net/$INTERFACE/statistics/rx_bytes)
-    T1=$(cat /sys/class/net/$INTERFACE/statistics/tx_bytes)
-    
+    R1=$(cat "/sys/class/net/$INTERFACE/statistics/rx_bytes")
+    T1=$(cat "/sys/class/net/$INTERFACE/statistics/tx_bytes")
     sleep 1
-    
     # آمار لحظه دوم
-    R2=$(cat /sys/class/net/$INTERFACE/statistics/rx_bytes)
-    T2=$(cat /sys/class/net/$INTERFACE/statistics/tx_bytes)
+    R2=$(cat "/sys/class/net/$INTERFACE/statistics/rx_bytes")
+    T2=$(cat "/sys/class/net/$INTERFACE/statistics/tx_bytes")
 
     # محاسبات سرعت و حجم
     DL_SPEED=$(awk "BEGIN {printf \"%.2f\", ($R2-$R1)/1024/1024}")
@@ -30,9 +46,10 @@ while true; do
     UL_TOTAL=$(awk "BEGIN {printf \"%.2f\", $T2/1024/1024/1024}")
 
     # شمارش کانکشن‌ها
-    HTTPS_1=$(ss -nt state established '( sport = :443 )' | grep -v Recv-Q | wc -l)
-    HTTPS_2=$(ss -nt state established '( sport = :2053 )' | grep -v Recv-Q | wc -l)
-    HTTP_1=$(ss -nt state established '( sport = :80 )' | grep -v Recv-Q | wc -l)
+    # پورت‌های رایج: 443 (HTTPS)، 80 (HTTP)، 2053 (Panel/Tunnel)
+    HTTPS_1=$(ss -nt state established '( sport = :443 )' | grep -c ":443")
+    HTTPS_2=$(ss -nt state established '( sport = :2053 )' | grep -c ":2053")
+    HTTP_1=$(ss -nt state established '( sport = :80 )' | grep -c ":80")
 
     clear
     echo -e "${YELLOW}--- Active Frontend Connections (ESTABLISHED) ---${NC}"
@@ -41,10 +58,9 @@ while true; do
     printf "HTTP  (Port 80  ) : ${GREEN}%-5s connections${NC}\n" "$HTTP_1"
     
     echo ""
-    # اینجا اسم اینترفیس به صورت خودکار نمایش داده می‌شود
     echo -e "${YELLOW}--- Network Traffic ($INTERFACE) ---${NC}"
     printf "Current Speed : DL ${GREEN}%-7s MB/s${NC} |  UL ${GREEN}%-7s MB/s${NC}\n" "$DL_SPEED" "$UL_SPEED"
     printf "Total Usage   : DL ${PINK}%-7s GB${NC}   |  UL ${PINK}%-7s GB${NC}\n" "$DL_TOTAL" "$UL_TOTAL"
     
-    echo -e "\n${NC}Interface detected: $INTERFACE | Press [Ctrl+C] to stop"
+    echo -e "\n${NC}Interface Detected: $INTERFACE | Press [Ctrl+C] to stop"
 done
